@@ -47,7 +47,10 @@
     }
 
     /* player wrapper and aspect ratios */
-    .player-wrapper{width:100%;max-width:1000px;margin:0 auto;position:relative;border-radius:12px;overflow:hidden;box-shadow:0 12px 40px rgba(7,20,40,0.12);background:#000}
+    .player-wrapper{
+      width:100%;max-width:1000px;margin:0 auto;position:relative;
+      border-radius:12px;overflow:hidden;box-shadow:0 12px 40px rgba(7,20,40,0.12);background:#000
+    }
     .player-wrapper.aspect-16-9{padding-top:56.25%}
     .player-wrapper.aspect-4-3{padding-top:75%}
     .player-wrapper.aspect-1-1{padding-top:100%}
@@ -55,11 +58,13 @@
     .player-wrapper.aspect-fill{padding-top:0;height:60vh}
 
     .shaka-video-container{position:absolute;inset:0;width:100%;height:100%}
-    .shaka-video-container video{width:100%;height:100%;object-fit:contain;background:#000;transform-origin:center center;transition:transform 80ms linear}
+    .shaka-video-container video{width:100%;height:100%;object-fit:contain;background:#000}
 
     /* iframe wrapper mirrors the player area exactly */
-    .iframe-wrapper{position:absolute;inset:0;width:100%;height:100%;display:none;background:#000;overflow:hidden;transform-origin:center center;transition:transform 80ms linear}
-    .iframe-wrapper iframe{width:100%;height:100%;border:0;transform-origin:center center;transition:transform 80ms linear;will-change:transform}
+    .iframe-wrapper{
+      position:absolute;inset:0;width:100%;height:100%;display:none;background:#000;overflow:hidden;
+    }
+    .iframe-wrapper iframe{width:100%;height:100%;border:0;object-fit:contain}
 
     /* overlay circular button (top corner) */
     .overlay-btn{
@@ -70,9 +75,6 @@
     }
     .overlay-btn:hover{transform:translateY(-3px)}
     .overlay-btn[aria-pressed="true"]{background:var(--dark-pink)}
-
-    /* pinch/touch catcher */
-    .touch-catcher{position:absolute;inset:0;z-index:3500;touch-action:none;background:transparent;display:none}
 
     /* server2 button */
     .server2-area{max-width:1000px;margin:12px auto;display:flex;justify-content:center}
@@ -85,13 +87,54 @@
 
     footer{margin-top:14px;text-align:center;color:#071427;font-weight:700}
 
-    /* landscape transform when active */
-    .landscape-mode{transform-origin:center center;transform:rotate(90deg) translateY(-100%)}
-    :fullscreen .landscape-mode, :-webkit-full-screen .landscape-mode { width:100vh!important;height:100vw!important;position:fixed;top:0;left:0;right:0;bottom:0 }
+    /* Mobile landscape fullscreen styles */
+    .landscape-fullscreen {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      z-index: 9999 !important;
+      background: #000 !important;
+      border-radius: 0 !important;
+      max-width: none !important;
+      padding-top: 0 !important;
+    }
+
+    .landscape-fullscreen .iframe-wrapper,
+    .landscape-fullscreen .shaka-video-container {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    .landscape-fullscreen iframe,
+    .landscape-fullscreen video {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+    }
+
+    .landscape-fullscreen .overlay-btn {
+      z-index: 99999 !important;
+    }
 
     @media (max-width:720px){
       .controls-row{justify-content:center}
       .player-wrapper.aspect-fill{height:48vh}
+      
+      /* Mobile specific landscape handling */
+      .landscape-fullscreen {
+        transform-origin: center center;
+      }
+      
+      @media (orientation: landscape) {
+        .landscape-fullscreen iframe,
+        .landscape-fullscreen video {
+          object-fit: cover !important;
+          width: 100vw !important;
+          height: 100vh !important;
+        }
+      }
     }
   </style>
 </head>
@@ -243,153 +286,121 @@
     });
   </script>
 
-  <!-- ========== UI: Server2, Overlay, Pinch-to-zoom, Landscape toggle (ONLY UI changes) ========== -->
+  <!-- ========== UI: Server2, Landscape Fullscreen ========== -->
   <script>
-    const SERVICE2_URL = "https://lins.onrender.com/"; // change in repo when needed
-    const POS = 'right'; // overlay position: 'right' or 'left'
+    const SERVICE2_URL = "https://lins.onrender.com/";
 
     (function(){
       const server2Btn = document.getElementById('server2Btn');
       const playerWrapper = document.getElementById('playerWrapper');
       const iframeWrapper = document.getElementById('iframeWrapper');
       const iframe = document.getElementById('server2Iframe');
-      const mainVideo = document.getElementById('mainVideo');
       const shakaContainer = document.querySelector('.shaka-video-container');
 
-      // overlay button (reused for both modes)
+      // overlay button (for landscape toggle)
       const overlayBtn = document.createElement('button');
       overlayBtn.className = 'overlay-btn';
-      overlayBtn.title = 'Toggle horizontal fullscreen';
+      overlayBtn.title = 'Toggle landscape fullscreen';
       overlayBtn.setAttribute('aria-pressed','false');
-      overlayBtn.innerText = '<>';
+      overlayBtn.innerText = '⟲';
       overlayBtn.style.display = 'none';
-      if(POS==='left'){ overlayBtn.style.left='10px'; overlayBtn.style.right='auto' }
-
-      // pinch catcher (single element that handles pinch for active content)
-      const touchCatcher = document.createElement('div');
-      touchCatcher.className = 'touch-catcher';
-      touchCatcher.style.display = 'none';
-      playerWrapper.appendChild(touchCatcher);
       playerWrapper.appendChild(overlayBtn);
 
       let openServer2 = false;
       let landscapeActive = false;
-      let currentScale = 1, startScale = 1, initialDistance = null;
 
-      function getDistance(a,b){ const dx=b.clientX-a.clientX, dy=b.clientY-a.clientY; return Math.hypot(dx,dy); }
-
-      // pinch handlers: apply to either video or iframe depending on openServer2
-      touchCatcher.addEventListener('touchstart', function(e){
-        if(e.touches.length===2){
-          e.preventDefault();
-          initialDistance = getDistance(e.touches[0], e.touches[1]);
-          startScale = currentScale;
-        }
-      }, {passive:false});
-      touchCatcher.addEventListener('touchmove', function(e){
-        if(e.touches.length===2 && initialDistance){
-          e.preventDefault();
-          const dist = getDistance(e.touches[0], e.touches[1]);
-          let newScale = startScale * (dist/initialDistance);
-          if(newScale<1) newScale=1;
-          if(newScale>3) newScale=3;
-          currentScale = newScale;
-          if(openServer2){
-            iframe.style.transform = `scale(${currentScale})`;
-          } else {
-            mainVideo.style.transform = `scale(${currentScale})`;
+      // Landscape fullscreen toggle
+      overlayBtn.addEventListener('click', async function(){
+        if(!landscapeActive){
+          // Enter landscape fullscreen
+          playerWrapper.classList.add('landscape-fullscreen');
+          overlayBtn.setAttribute('aria-pressed','true');
+          overlayBtn.innerText = '×';
+          landscapeActive = true;
+          
+          // Lock to landscape orientation if possible
+          try {
+            if (screen.orientation && screen.orientation.lock) {
+              await screen.orientation.lock('landscape-primary');
+            }
+          } catch(e) {
+            console.log('Orientation lock not supported');
+          }
+          
+        } else {
+          // Exit landscape fullscreen
+          playerWrapper.classList.remove('landscape-fullscreen');
+          overlayBtn.setAttribute('aria-pressed','false');
+          overlayBtn.innerText = '⟲';
+          landscapeActive = false;
+          
+          // Unlock orientation
+          try {
+            if (screen.orientation && screen.orientation.unlock) {
+              screen.orientation.unlock();
+            }
+          } catch(e) {
+            console.log('Orientation unlock not supported');
           }
         }
-      }, {passive:false});
-      touchCatcher.addEventListener('touchend', function(e){
-        if(e.touches.length<2){ initialDistance = null; startScale = currentScale; }
       });
 
-      // overlay button behavior: toggle landscape fullscreen on playerWrapper
-      overlayBtn.addEventListener('click', async function(){
-        if(!openServer2){
-          // acting on main player
-        } else {
-          // acting on iframe
-        }
-        if(!landscapeActive){
-          try{
-            // Request fullscreen on playerWrapper FIRST (fixes black-screen)
-            if(playerWrapper.requestFullscreen) {
-              await playerWrapper.requestFullscreen();
-            } else if(playerWrapper.webkitRequestFullscreen) {
-              await playerWrapper.webkitRequestFullscreen();
-            } else if(playerWrapper.msRequestFullscreen) {
-              await playerWrapper.msRequestFullscreen();
-            }
-          }catch(e){}
-          // After fullscreen is entered, then rotate and lock orientation
-          setTimeout(async ()=>{
-            iframeWrapper.classList.add('landscape-mode');
-            overlayBtn.setAttribute('aria-pressed','true'); overlayBtn.innerText='[]'; landscapeActive=true;
-            try{ if(screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); }catch(e){}
-          }, 140);
-        } else {
-          // disable landscape mode
-          iframeWrapper.classList.remove('landscape-mode');
-          overlayBtn.setAttribute('aria-pressed','false'); overlayBtn.innerText='<>'; landscapeActive=false;
-          try{ if(document.exitFullscreen) await document.exitFullscreen(); else if(document.webkitExitFullscreen) await document.webkitExitFullscreen(); }catch(e){}
-          try{ if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); }catch(e){}
-        }
-      });
-
-      // server2 toggle button
+      // Server2 toggle button
       server2Btn.addEventListener('click', function(){
         openServer2 = !openServer2;
         if(openServer2){
-          // hide main shaka player
+          // Hide main shaka player
           shakaContainer.style.display = 'none';
-          // show iframe and load
+          // Show iframe and load
           iframe.src = SERVICE2_URL;
           iframeWrapper.style.display = 'block';
           iframeWrapper.setAttribute('aria-hidden','false');
-          // show overlay + touch catcher
+          // Show overlay button
           overlayBtn.style.display = 'flex';
-          touchCatcher.style.display = 'block';
-          overlayBtn.setAttribute('aria-pressed','false'); overlayBtn.innerText='<>';
-
           server2Btn.innerText = 'Close Server 2';
-          // reset scales
-          currentScale = 1; mainVideo.style.transform='scale(1)'; iframe.style.transform='scale(1)';
+          
         } else {
-          // close iframe
-          try{ iframe.src=''; }catch(e){}
+          // Close iframe
+          iframe.src = '';
           iframeWrapper.style.display = 'none';
           iframeWrapper.setAttribute('aria-hidden','true');
-          // hide overlay + touch catcher
+          // Hide overlay button
           overlayBtn.style.display = 'none';
-          touchCatcher.style.display = 'none';
           server2Btn.innerText = 'Server 2';
-          // show main player back
+          // Show main player back
           shakaContainer.style.display = '';
-          // reset scales and exit rotations/fullscreen if active
-          currentScale = 1; mainVideo.style.transform='scale(1)'; iframe.style.transform='scale(1)';
+          
+          // Reset landscape mode if active
           if(landscapeActive){
-            iframeWrapper.classList.remove('landscape-mode');
-            overlayBtn.setAttribute('aria-pressed','false'); overlayBtn.innerText='<>';
-            landscapeActive=false;
-            try{ if(document.exitFullscreen) document.exitFullscreen(); }catch(e){}
-            try{ if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); }catch(e){}
+            playerWrapper.classList.remove('landscape-fullscreen');
+            overlayBtn.setAttribute('aria-pressed','false');
+            overlayBtn.innerText = '⟲';
+            landscapeActive = false;
+            try {
+              if (screen.orientation && screen.orientation.unlock) {
+                screen.orientation.unlock();
+              }
+            } catch(e) {}
           }
         }
       });
 
-      // when user exits fullscreen (ESC), cleanup
-      document.addEventListener('fullscreenchange', ()=>{
-        if(!document.fullscreenElement && landscapeActive){
-          landscapeActive=false;
-          iframeWrapper.classList.remove('landscape-mode');
-          overlayBtn.setAttribute('aria-pressed','false'); overlayBtn.innerText='<>';
-          try{ if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); }catch(e){}
+      // Escape key to exit landscape
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && landscapeActive) {
+          playerWrapper.classList.remove('landscape-fullscreen');
+          overlayBtn.setAttribute('aria-pressed','false');
+          overlayBtn.innerText = '⟲';
+          landscapeActive = false;
+          try {
+            if (screen.orientation && screen.orientation.unlock) {
+              screen.orientation.unlock();
+            }
+          } catch(e) {}
         }
       });
 
-      // aspect select affects wrapper (applies to both)
+      // Aspect select affects wrapper
       const aspectSelect = document.getElementById('aspectSelect');
       aspectSelect.addEventListener('change', ()=> {
         const cls = aspectSelect.value;
@@ -397,16 +408,27 @@
         playerWrapper.classList.add(cls);
       });
 
-      // cinema / fs / vr same as before (operate on playerWrapper)
+      // Other button handlers
       document.getElementById('cinemaBtn').addEventListener('click', ()=>{
         document.body.classList.toggle('cinema-mode');
-        if(document.body.classList.contains('cinema-mode')) document.body.style.background='linear-gradient(180deg, rgba(6,24,36,0.95), rgba(15,25,30,0.95))';
-        else document.body.style.background='';
+        if(document.body.classList.contains('cinema-mode')) {
+          document.body.style.background='linear-gradient(180deg, rgba(6,24,36,0.95), rgba(15,25,30,0.95))';
+        } else {
+          document.body.style.background='';
+        }
       });
-      document.getElementById('fsBtn').addEventListener('click', ()=>{ if(playerWrapper.requestFullscreen) playerWrapper.requestFullscreen().catch(()=>{}); });
-      document.getElementById('vrBtn').addEventListener('click', ()=>{ alert('VR mode requires WebXR support.'); });
+
+      document.getElementById('fsBtn').addEventListener('click', ()=> {
+        if(playerWrapper.requestFullscreen) {
+          playerWrapper.requestFullscreen().catch(()=>{});
+        }
+      });
+
+      document.getElementById('vrBtn').addEventListener('click', ()=> {
+        alert('VR mode requires WebXR support.');
+      });
 
     })();
   </script>
 </body>
-</html>
+  </html>
