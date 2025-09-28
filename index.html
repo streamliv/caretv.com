@@ -1,283 +1,111 @@
-<!DOCTYPE html>
-<html lang="hi">
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5.0, user-scalable=yes" />
-  <title>खेल की दुनिया</title>
-
-  <!-- Devanagari font for better Hindi rendering -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet" />
-
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Live Stream Player</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <style>
-    /* Mini reset */
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      font-family: "Noto Sans Devanagari", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background: #FF9933; /* Bhagwa */
-      color: #111;
-      overflow-x: hidden;
-    }
-
-    /* Welcome overlay (4s water-bubbles + text), then fade out */
-    .welcome {
-      position: fixed; inset: 0;
-      background: linear-gradient(135deg, #bfe8ff 0%, #8ec5ff 100%);
-      z-index: 9999;
-      display: grid; place-items: center;
-      overflow: hidden;
-      animation: overlayFade 4s ease-in-out 0s forwards;
-    }
-    @keyframes overlayFade {
-      0% { opacity: 1; }
-      95% { opacity: 1; }
-      100% { opacity: 0; visibility: hidden; }
-    }
-    .welcome-text {
-      font-size: clamp(22px, 6vw, 44px);
-      color: #003a66;
-      text-align: center;
-      text-shadow: 0 2px 8px rgba(0,0,0,.2);
-      animation: txtFloat 2s ease-in-out infinite alternate;
-      padding: 0 16px;
-    }
-    @keyframes txtFloat {
-      from { transform: translateY(0); }
-      to { transform: translateY(-10px); }
-    }
-    /* Bubbles */
-    .bubble {
-      position: absolute; bottom: -80px;
-      background: rgba(255,255,255,0.55);
-      border-radius: 50%;
-      filter: blur(0.2px);
-      animation: rise 4s linear infinite;
-    }
-    @keyframes rise {
-      0% { transform: translateY(0) scale(1); opacity: .0; }
-      10% { opacity: 1; }
-      90% { opacity: 1; }
-      100% { transform: translateY(-110vh) scale(1.1); opacity: 0; }
-    }
-    /* generate multiple bubbles with different sizes/speeds */
-    .b1{left:8%; width:18px;height:18px; animation-delay:.0s}
-    .b2{left:18%;width:26px;height:26px; animation-delay:.4s}
-    .b3{left:28%;width:14px;height:14px; animation-delay:.8s}
-    .b4{left:38%;width:22px;height:22px; animation-delay:1.2s}
-    .b5{left:50%;width:28px;height:28px; animation-delay:.2s}
-    .b6{left:61%;width:16px;height:16px; animation-delay:1.0s}
-    .b7{left:72%;width:24px;height:24px; animation-delay:.6s}
-    .b8{left:83%;width:20px;height:20px; animation-delay:1.4s}
-    .b9{left:92%;width:18px;height:18px; animation-delay:1.8s}
-
-    /* Layout */
-    .wrap {
-      min-height: 100%;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      gap: 12px;
-    }
-    header {
-      position: sticky; top: 0;
-      background: rgba(255,255,255,0.14);
-      backdrop-filter: blur(2px);
-      border-bottom: 1px solid rgba(0,0,0,0.06);
-      padding: 8px 0;
-      z-index: 5;
-    }
-    .container {
-      width: min(94vw, 1000px);
-      margin: 0 auto;
-    }
-
-    /* Header marquee: left->right and right->left continuous */
-    .marquee {
-      overflow: hidden; white-space: nowrap;
-    }
-    .marquee-track {
-      display: inline-block;
-      padding-block: 6px;
-      font-weight: 700;
-      font-size: clamp(18px, 5vw, 32px);
-      color: #7b0000;
-      animation: marqueeLR 10s linear infinite;
-    }
-    .marquee-track.rtl {
-      color: #2b0a3d;
-      animation-name: marqueeRL;
-    }
-    @keyframes marqueeLR {
-      0%   { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
-    }
-    @keyframes marqueeRL {
-      0%   { transform: translateX(100%); }
-      100% { transform: translateX(-100%); }
-    }
-
-    /* Player 16:9 */
-    .player-shell {
-      display: grid; place-items: center;
-      padding: 8px 0 0;
-    }
-    .player {
-      width: min(96vw, 900px);
-      aspect-ratio: 16 / 9;
-      background: #000;
-      border-radius: 14px;
-      overflow: hidden;
-      box-shadow: 0 12px 36px rgba(0,0,0,.28);
-      position: relative;
-      touch-action: none; /* manage gestures via JS */
-      transform-origin: center center;
-    }
-    .player iframe {
-      width: 100%; height: 100%; border: 0; display: block;
-    }
-
-    /* Buttons area */
-    .buttons {
-      margin: 14px auto 8px;
-      width: min(96vw, 420px);
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    .btn {
-      font-size: 12px;
-      background: #e11919;
-      color: #fff;
-      text-decoration: none;
-      text-align: center;
-      padding: 10px 14px;
-      border-radius: 10px;
-      box-shadow: 0 4px 10px rgba(0,0,0,.2);
-      transition: transform .2s ease, background .2s ease, box-shadow .2s ease;
-    }
-    .btn:hover { background:#c61414; transform: translateY(-1px); box-shadow:0 6px 14px rgba(0,0,0,.28); }
-
-    .premium {
-      grid-column: 1 / -1;
-      background: #ff4d00;
-      font-weight: 700;
-      padding: 12px 16px;
-      animation: pulse 3s ease-in-out infinite;
-    }
-    @keyframes pulse {
-      0%,100% { transform: scale(1); }
-      50% { transform: scale(1.03); }
-    }
-
-    /* Small screens */
-    @media (max-width: 560px) {
-      .buttons { grid-template-columns: 1fr; width: min(94vw, 340px); }
-    }
-
-    footer {
-      text-align: center;
-      color: rgba(0,0,0,.7);
-      padding: 16px 0 28px;
-    }
+:root {
+  --asmani: #cfe9ff;
+  --asmani-deep: #a8d6ff;
+  --asmani-bubble: rgba(255,255,255,0.35);
+  --ink: #0f3555;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; font-family: system-ui, Arial, sans-serif; color: var(--ink); }
+.bubble-bg {
+  position: fixed; inset: 0;
+  background: radial-gradient(1200px 800px at 70% -10%, var(--asmani-deep), var(--asmani)),
+              linear-gradient(180deg, var(--asmani), #e9f4ff);
+  overflow: hidden; z-index: -1;
+}
+.bubble-bg::before, .bubble-bg::after {
+  content: ""; position: absolute; inset: 0; background-repeat: repeat;
+  background-image:
+    radial-gradient(12px 12px at 10% 90%, var(--asmani-bubble) 40%, transparent 41%),
+    radial-gradient(8px 8px at 30% 80%, var(--asmani-bubble) 40%, transparent 41%),
+    radial-gradient(10px 10px at 50% 95%, var(--asmani-bubble) 40%, transparent 41%),
+    radial-gradient(14px 14px at 70% 85%, var(--asmani-bubble) 40%, transparent 41%),
+    radial-gradient(9px 9px at 90% 92%, var(--asmani-bubble) 40%, transparent 41%);
+  animation: rise 18s linear infinite; opacity: 0.6;
+}
+.bubble-bg::after { animation-duration: 22s; animation-delay: -5s; opacity: 0.45; }
+@keyframes rise {
+  0% { background-position: 0 100%, 0 100%, 0 100%, 0 100%, 0 100%; }
+  100% { background-position: 0 -10%, 0 -10%, 0 -10%, 0 -10%, 0 -10%; }
+}
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; background: rgba(255,255,255,0.7); backdrop-filter: blur(6px);
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+.brand { font-weight: 700; font-size: 18px; }
+.pill { font-size: 10px; padding: 6px 10px; border-radius: 999px; text-decoration: none; display: inline-block; }
+.pill.red { background: #f44336; color: #fff; }
+.pill.pink { background: #ff6ea8; color: #fff; }
+.links a { margin-left: 8px; }
+.pill:hover { filter: brightness(0.95); transform: scale(1.05); transition: all 0.2s; }
+.container { max-width: 960px; margin: 18px auto; padding: 0 12px; }
+.player { position: relative; }
+video { width: 100%; background: #000; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+.quality { position: absolute; bottom: 12px; right: 12px; display: flex; gap: 6px; }
+.quality button { background: rgba(0,0,0,0.6); color: #fff; border: 0; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 12px; }
+.quality button:hover { background: rgba(0,0,0,0.8); }
   </style>
 </head>
 <body>
-  <!-- Welcome overlay first -->
-  <div class="welcome" id="welcome">
-    <div class="bubble b1"></div>
-    <div class="bubble b2"></div>
-    <div class="bubble b3"></div>
-    <div class="bubble b4"></div>
-    <div class="bubble b5"></div>
-    <div class="bubble b6"></div>
-    <div class="bubble b7"></div>
-    <div class="bubble b8"></div>
-    <div class="bubble b9"></div>
-    <div class="welcome-text">आपका Mr Professor की दुनिया में स्वागत है</div>
-  </div>
-
-  <div class="wrap">
-    <header>
-      <div class="container marquee">
-        <span class="marquee-track">खेल की दुनिया • खेल की दुनिया • खेल की दुनिया • खेल की दुनिया •</span>
-        <span class="marquee-track rtl">खेल की दुनिया • खेल की दुनिया • खेल की दुनिया • खेल की दुनिया •</span>
-      </div>
-    </header>
-
-    <main class="container">
-      <section class="player-shell">
-        <div class="player" id="player">
-          <iframe
-            src="https://liveakmt-p.slivcdn.com/hls/live/2119921/cricacc12809/HIN/std_lrh-800300010.m3u8"
-            allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-            allowfullscreen
-            referrerpolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-presentation">
-          </iframe>
-        </div>
-      </section>
-
-      <section class="buttons">
-        <a class="btn" href="https://t.me/+faHM0DpI-9swY2E1" target="_blank" rel="noopener noreferrer">Join Link 1</a>
-        <a class="btn" href="https://t.me/+b6oxy5X8Pss0Yzhl" target="_blank" rel="noopener noreferrer">Join Link 2</a>
-        <a class="btn" href="https://t.me/+e5S_sWntan1mMGQ9" target="_blank" rel="noopener noreferrer">Join Link 3</a>
-        <a class="btn" href="https://t.me/+e5S_sWntan1mMGQ9" target="_blank" rel="noopener noreferrer">Join Link 4</a>
-
-        <a class="btn premium" href="https://t.me/+sR5gDD3F2HY1YWE1" target="_blank" rel="noopener noreferrer">
-          हमारे प्रीमियम सदस्य बनने के लिए ज्वाइन कीजिये
-        </a>
-      </section>
-    </main>
-
-    <footer class="container">© 2025 खेल की दुनिया</footer>
-  </div>
-
+  <div class="bubble-bg"></div>
+  <header class="topbar">
+    <div class="brand">🔴 Live Stream</div>
+    <nav class="links">
+      <a class="pill red" href="https://t.me/+faHM0DpI-9swY2E1" target="_blank">Join Now</a>
+      <a class="pill red" href="https://t.me/+faHM0DpI-9swY2E1" target="_blank">Get Updates</a>
+      <a class="pill red" href="https://t.me/+faHM0DpI-9swY2E1" target="_blank">Exclusive Access</a>
+      <a class="pill red" href="https://t.me/+faHM0DpI-9swY2E1" target="_blank">Connect Telegram</a>
+      <a class="pill pink" href="https://t.me/+faHM0DpI-9swY2E1" target="_blank">Become premium 🩷</a>
+    </nav>
+  </header>
+  <main class="container">
+    <section class="player">
+      <video id="video" playsinline controls muted preload="auto"></video>
+      <div class="quality" id="quality"></div>
+    </section>
+  </main>
   <script>
-    // Show welcome overlay for 4 seconds, then hide to reveal player
-    window.addEventListener('load', () => {
-      setTimeout(() => {
-        const w = document.getElementById('welcome');
-        if (w) w.style.display = 'none';
-      }, 4000);
-    });
-
-    // Two-finger pinch zoom for the 16:9 player
-    const player = document.getElementById('player');
-    let baseScale = 1;
-    let startScale = 1;
-    let startDist = 0;
-
-    function distance(touches) {
-      const [a, b] = [touches[0], touches[1]];
-      return Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
-    }
-
-    player.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        startDist = distance(e.touches);
-        startScale = baseScale;
-      }
-    }, { passive: false });
-
-    player.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        const curr = distance(e.touches);
-        let s = startScale * (curr / startDist);
-        s = Math.max(0.5, Math.min(3, s)); // clamp 0.5x–3x
-        player.style.transform = 'scale(' + s + ')';
-      }
-    }, { passive: false });
-
-    player.addEventListener('touchend', (e) => {
-      if (e.touches.length < 2) {
-        const m = player.style.transform.match(/scale\\(([^)]+)\\)/);
-        baseScale = m ? parseFloat(m[1]) : baseScale;
-      }
-    });
+(()=>{
+const m3u8="https://dai.google.com/ssai/event/yk9L2U37Sgilimx_SKGHhw/master.m3u8";
+const video=document.getElementById('video');
+const quality=document.getElementById('quality');
+let hls=null;
+function addQuality(){
+quality.innerHTML="";
+if(!hls||!hls.levels?.length)return;
+const auto=document.createElement('button');
+auto.textContent='Auto';auto.onclick=()=>hls.currentLevel=-1;
+quality.appendChild(auto);
+hls.levels.forEach((l,i)=>{
+const b=document.createElement('button');
+b.textContent=l.height?`${l.height}p`:`L${i}`;
+b.onclick=()=>hls.currentLevel=i;
+quality.appendChild(b);
+});
+}
+function play(){
+if(video.canPlayType('application/vnd.apple.mpegurl')){
+video.src=m3u8;
+video.addEventListener('loadedmetadata',()=>video.play().catch(()=>{}),{once:true});
+return;
+}
+if(Hls.isSupported()){
+hls=new Hls({liveSyncDurationCount:3,liveMaxLatencyDurationCount:5,maxBufferLength:10,fragLoadingRetryDelay:1000,fragLoadingMaxRetry:10,lowLatencyMode:true});
+hls.on(Hls.Events.MANIFEST_PARSED,()=>{addQuality();video.play().catch(()=>{});});
+hls.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal&&d.type===Hls.ErrorTypes.MEDIA_ERROR)hls.recoverMediaError();});
+hls.attachMedia(video);
+hls.loadSource(m3u8);
+}}
+play();
+})();
   </script>
 </body>
 </html>
