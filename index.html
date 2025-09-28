@@ -73,39 +73,46 @@ video { width: 100%; background: #000; border-radius: 12px; box-shadow: 0 8px 24
     </section>
   </main>
   <script>
-(()=>{
-const m3u8="https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8";
-const video=document.getElementById('video');
-const quality=document.getElementById('quality');
-let hls=null;
-function addQuality(){
-quality.innerHTML="";
-if(!hls||!hls.levels?.length)return;
-const auto=document.createElement('button');
-auto.textContent='Auto';auto.onclick=()=>hls.currentLevel=-1;
-quality.appendChild(auto);
-hls.levels.forEach((l,i)=>{
-const b=document.createElement('button');
-b.textContent=l.height?`${l.height}p`:`L${i}`;
-b.onclick=()=>hls.currentLevel=i;
-quality.appendChild(b);
-});
+const video = document.getElementById('video');
+const quality = document.getElementById('quality');
+// Big Buck Bunny - guaranteed working stream
+const streamUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+
+// Try native first (Safari/iOS)
+if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = streamUrl;
+    video.play().catch(() => {});
+} 
+// Use hls.js for other browsers
+else if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+    const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 90
+    });
+    
+    hls.loadSource(streamUrl);
+    hls.attachMedia(video);
+    
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        // Add quality buttons
+        quality.innerHTML = "";
+        if (hls.levels?.length > 1) {
+            const auto = document.createElement('button');
+            auto.textContent = 'Auto';
+            auto.onclick = () => hls.currentLevel = -1;
+            quality.appendChild(auto);
+            
+            hls.levels.forEach((level, i) => {
+                const btn = document.createElement('button');
+                btn.textContent = level.height ? `${level.height}p` : `Level ${i}`;
+                btn.onclick = () => hls.currentLevel = i;
+                quality.appendChild(btn);
+            });
+        }
+        video.play().catch(() => {});
+    });
 }
-function play(){
-if(video.canPlayType('application/vnd.apple.mpegurl')){
-video.src=m3u8;
-video.addEventListener('loadedmetadata',()=>video.play().catch(()=>{}),{once:true});
-return;
-}
-if(Hls.isSupported()){
-hls=new Hls({liveSyncDurationCount:3,liveMaxLatencyDurationCount:5,maxBufferLength:10,fragLoadingRetryDelay:1000,fragLoadingMaxRetry:10,lowLatencyMode:true});
-hls.on(Hls.Events.MANIFEST_PARSED,()=>{addQuality();video.play().catch(()=>{});});
-hls.on(Hls.Events.ERROR,(_,d)=>{if(d.fatal&&d.type===Hls.ErrorTypes.MEDIA_ERROR)hls.recoverMediaError();});
-hls.attachMedia(video);
-hls.loadSource(m3u8);
-}}
-play();
-})();
   </script>
 </body>
 </html>
