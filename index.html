@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Live Stream Player</title>
+  <title>Live Cricket Stream</title>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <style>
 :root {
@@ -52,12 +52,13 @@ video { width: 100%; background: #000; border-radius: 12px; box-shadow: 0 8px 24
 .quality { position: absolute; bottom: 12px; right: 12px; display: flex; gap: 6px; }
 .quality button { background: rgba(0,0,0,0.6); color: #fff; border: 0; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 12px; }
 .quality button:hover { background: rgba(0,0,0,0.8); }
+.status { text-align: center; margin: 10px 0; opacity: 0.8; }
   </style>
 </head>
 <body>
   <div class="bubble-bg"></div>
   <header class="topbar">
-    <div class="brand">🔴 Live Stream</div>
+    <div class="brand">🏏 Live Cricket Stream</div>
     <nav class="links">
       <a class="pill red" href="https://t.me/+faHM0DpI-9swY2E1" target="_blank">Join Now</a>
       <a class="pill red" href="https://t.me/+faHM0DpI-9swY2E1" target="_blank">Get Updates</a>
@@ -67,6 +68,7 @@ video { width: 100%; background: #000; border-radius: 12px; box-shadow: 0 8px 24
     </nav>
   </header>
   <main class="container">
+    <div class="status" id="status">Connecting to live stream...</div>
     <section class="player">
       <video id="video" playsinline controls muted preload="auto"></video>
       <div class="quality" id="quality"></div>
@@ -75,26 +77,46 @@ video { width: 100%; background: #000; border-radius: 12px; box-shadow: 0 8px 24
   <script>
 const video = document.getElementById('video');
 const quality = document.getElementById('quality');
-// Big Buck Bunny - guaranteed working stream
-const streamUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+const status = document.getElementById('status');
 
-// Try native first (Safari/iOS)
+// Your slivcdn stream URL
+const streamUrl = "https://liveakmt-p.slivcdn.com/hls/live/2119921/cricacc12809/HIN/std_lrh-800300010.m3u8?hdnea=exp=1759105837~acl=/*~id=32046197396811354804778693895581~hmac=b25acb2892415b9e52fc018aed5b352adcb8b9fae1874c2fc164931809be9634";
+
+function updateStatus(msg) {
+    status.textContent = msg;
+}
+
+// Try native HLS first (Safari/iOS)
 if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = streamUrl;
+    video.addEventListener('loadstart', () => updateStatus('Loading stream...'));
+    video.addEventListener('loadeddata', () => updateStatus('Stream loaded, ready to play'));
+    video.addEventListener('error', () => updateStatus('Error loading stream'));
     video.play().catch(() => {});
 } 
 // Use hls.js for other browsers
 else if (typeof Hls !== 'undefined' && Hls.isSupported()) {
     const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: false,
-        backBufferLength: 90
+        lowLatencyMode: true,
+        backBufferLength: 90,
+        fragLoadingTimeOut: 20000,
+        manifestLoadingTimeOut: 10000,
+        fragLoadingMaxRetry: 6,
+        manifestLoadingMaxRetry: 6,
+        xhrSetup: function (xhr, url) {
+            // Add headers to help with CORS/authentication
+            xhr.setRequestHeader('Referer', 'https://cricstream.me');
+            xhr.setRequestHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        }
     });
     
     hls.loadSource(streamUrl);
     hls.attachMedia(video);
     
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        updateStatus('Stream connected successfully!');
+        
         // Add quality buttons
         quality.innerHTML = "";
         if (hls.levels?.length > 1) {
@@ -105,14 +127,50 @@ else if (typeof Hls !== 'undefined' && Hls.isSupported()) {
             
             hls.levels.forEach((level, i) => {
                 const btn = document.createElement('button');
-                btn.textContent = level.height ? `${level.height}p` : `Level ${i}`;
+                btn.textContent = level.height ? `${level.height}p` : `${Math.round(level.bitrate/1000)}k`;
                 btn.onclick = () => hls.currentLevel = i;
                 quality.appendChild(btn);
             });
         }
-        video.play().catch(() => {});
+        
+        video.play().catch(() => updateStatus('Click play button to start'));
     });
+    
+    hls.on(Hls.Events.ERROR, (event, data) => {
+        console.error('HLS Error:', data);
+        if (data.fatal) {
+            switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                    updateStatus('Network error - retrying...');
+                    hls.startLoad();
+                    break;
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                    updateStatus('Media error - recovering...');
+                    hls.recoverMediaError();
+                    break;
+                default:
+                    updateStatus('Fatal error - stream unavailable');
+                    hls.destroy();
+                    break;
+            }
+        }
+    });
+    
+    hls.on(Hls.Events.FRAG_LOADED, () => {
+        if (status.textContent.includes('Connecting')) {
+            updateStatus('Stream playing live');
+        }
+    });
+} else {
+    updateStatus('HLS not supported in this browser');
 }
+
+// Click to retry functionality
+video.addEventListener('click', () => {
+    if (video.paused && video.readyState === 0) {
+        location.reload();
+    }
+});
   </script>
 </body>
 </html>
